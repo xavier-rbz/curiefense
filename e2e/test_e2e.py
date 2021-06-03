@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
-# Python requirements: pytest requests
+# Python requirements: pytest requests requests_toolbelt
 # install curieconfctl:
 # (cd ../curiefense/curieconf/utils ; pip3 install .)
 # (cd ../curiefense/curieconf/client ; pip3 install .)
 #
 # To run this with minikube (does not support IPv6):
 #
-# pytest --base-protected-url http://$(minikube ip):30081 --base-conf-url http://$(minikube ip):30000/api/v1/ --base-ui-url http://$(minikube ip):30080 --elasticsearch-url http://$IP:30200 .      # pylint: disable=line-too-long
+# pytest --base-protected-url http://$(minikube ip):$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].nodePort}') --base-conf-url http://$(minikube ip):30000/api/v1/ --base-ui-url http://$(minikube ip):30080 --elasticsearch-url http://$(minikube ip):30200 .      # pylint: disable=line-too-long
 #
 # To run this with docker-compose:
 # pytest --base-protected-url http://localhost:30081/ --base-conf-url http://localhost:30000/api/v1/ --base-ui-url http://localhost:30080 --elasticsearch-url http://localhost:9200 .      # pylint: disable=line-too-long
@@ -30,6 +30,7 @@
 
 
 from urllib.parse import urlparse
+import reqflip
 import json
 import logging
 import random
@@ -113,8 +114,9 @@ def cli(request):
 
 
 class TargetHelper:
-    def __init__(self, base_url):
+    def __init__(self, base_url, flip):
         self._base_url = base_url
+        self._flip = flip
 
     def query(
         self, path="/", suffix="", method="GET", headers=None, srcip=None, **kwargs
@@ -127,6 +129,10 @@ class TargetHelper:
         res = requests.request(
             method=method, url=self._base_url + path + suffix, headers=headers, **kwargs
         )
+        if self._flip:
+            # Also send copies of the request, flipping bits one by one
+            # This is a "light fuzzing" approach
+            reqflip.bitflip_send(res)
         return res
 
     def is_reachable(self, *args, **kwargs):
@@ -140,7 +146,8 @@ class TargetHelper:
 @pytest.fixture(scope="session")
 def target(request):
     url = request.config.getoption("--base-protected-url").rstrip("/")
-    return TargetHelper(url)
+    flip = request.config.getoption("--flip-requests")
+    return TargetHelper(url, flip)
 
 
 # geo=US, company=SPRINTLINK, asn=1239
