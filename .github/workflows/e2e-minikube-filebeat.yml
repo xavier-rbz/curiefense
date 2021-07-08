@@ -1,12 +1,6 @@
 name: Run e2e tests on minikube with logstash
 
-on:
-  pull_request:
-    paths:
-      - "deploy/**"
-      - "curiefense/**"
-      - "e2e/**"
-      - ".github/workflows/e2e-minikube-filebeat.yml"
+on: push
 
 jobs:
   e2e-minikube-filebeat:
@@ -93,6 +87,11 @@ jobs:
           github.event.sender.login != 'dependabot[bot]' &&
           ( github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository )
 
+      - name: Setup tmate session
+        if: ${{ failure() }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v2
